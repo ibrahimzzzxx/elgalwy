@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>نظام الرواتب المتكامل</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .config-section, .report-section {
+            background-color: #f0f8ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+
+        input[type="time"], input[type="date"], input[type="number"], input[type="text"] {
+            width: 120px;
+            padding: 5px;
+        }
+
+        button {
+            padding: 8px 15px;
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        .total-salary {
+            font-weight: bold;
+            font-size: 18px;
+            color: #333;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="config-section">
+        <h2>الإعدادات الأساسية</h2>
+        <label>اسم المستخدم:
+            <input type="text" id="userNameInput">
+        </label>
+        <label>SAP ID:
+            <input type="text" id="sapIdInput">
+        </label>
+        <br><br>
+        <label>الراتب الأساسي (دينار):
+            <input type="number" id="baseSalaryInput" value="275" step="5">
+        </label>
+        <button onclick="updateBaseSalary()">تحديث الراتب</button>
+    </div>
+
+    <h2>تسجيل الحضور والانصراف</h2>
+    
+    <table id="attendanceTable">
+        <thead>
+            <tr>
+                <th>التاريخ</th>
+                <th>الحضور</th>
+                <th>الانصراف</th>
+                <th>الساعات اليومية</th>
+                <th>الساعات الإضافية</th>
+                <th>الراتب اليومي (دينار)</th>
+                <th>إجراءات</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- البيانات تُضاف تلقائيًا -->
+        </tbody>
+    </table>
+    
+    <button onclick="addRow()">إضافة يوم جديد</button>
+    <button onclick="saveData()">حفظ البيانات</button>
+
+    <p class="total-salary">إجمالي الراتب: <span id="totalSalary">0.00</span> دينار</p>
+    
+    <div class="report-section">
+        <h3>التقارير الشهرية</h3>
+        <button onclick="generateMonthlyReport()">إنشاء تقرير شهري</button>
+        <div id="monthlyReport"></div>
+    </div>
+
+    <script>
+        const BASE_HOURS = 8.5;
+        let BASE_SALARY = 275;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedSalary = localStorage.getItem('baseSalary');
+            if (savedSalary) {
+                document.getElementById('baseSalaryInput').value = savedSalary;
+                BASE_SALARY = parseFloat(savedSalary);
+            }
+            loadData();
+        });
+
+        function calculateTime(checkIn, checkOut) {
+            if (!checkIn || !checkOut) return 0;
+            const [inH, inM] = checkIn.split(':').map(Number);
+            const [outH, outM] = checkOut.split(':').map(Number);
+
+            let startDate = new Date(2000, 0, 1, inH, inM);
+            let endDate = new Date(2000, 0, 1, outH, outM);
+            
+            if (endDate < startDate) endDate.setDate(endDate.getDate() + 1);
+
+            return (endDate - startDate) / (1000 * 60 * 60);
+        }
+
+        function addRow(defaultDate = '', defaultCheckIn = '', defaultCheckOut = '') {
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+                <td><input type="date" value="${defaultDate}"></td>
+                <td><input type="time" class="checkIn" value="${defaultCheckIn}"></td>
+                <td><input type="time" class="checkOut" value="${defaultCheckOut}"></td>
+                <td class="dailyHours">0.00</td>
+                <td class="overtime">0.00</td>
+                <td class="dailySalary">0.00 دينار</td>
+                <td><button onclick="deleteRow(this)">حذف</button></td>
+            `;
+            
+            newRow.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', () => {
+                    calculateValues();
+                    saveData();
+                });
+            });
+
+            document.querySelector('#attendanceTable tbody').appendChild(newRow);
+            calculateValues();
+        }
+
+        function deleteRow(btn) {
+            btn.closest('tr').remove();
+            saveData();
+            calculateValues();
+        }
+
+        function calculateValues() {
+            let totalSalary = 0;
+            const rows = document.querySelectorAll('#attendanceTable tbody tr');
+
+            rows.forEach(row => {
+                const checkIn = row.querySelector('.checkIn').value;
+                const checkOut = row.querySelector('.checkOut').value;
+
+                if (checkIn && checkOut) {
+                    const totalHours = calculateTime(checkIn, checkOut);
+                    const overtime = Math.max(totalHours - BASE_HOURS, 0);
+                    const dailyBase = BASE_SALARY / 26;
+                    const overtimeRate = (BASE_SALARY / 26 / BASE_HOURS) * 1.25;
+                    const dailyOvertimePay = overtime * overtimeRate;
+                    const dailySalary = (dailyBase + dailyOvertimePay).toFixed(2);
+
+                    row.querySelector('.dailyHours').textContent = totalHours.toFixed(2);
+                    row.querySelector('.overtime').textContent = overtime.toFixed(2);
+                    row.querySelector('.dailySalary').textContent = dailySalary + ' دينار';
+
+                    totalSalary += parseFloat(dailySalary);
+                }
+            });
+
+            document.getElementById('totalSalary').textContent = totalSalary.toFixed(2);
+        }
+
+        function updateBaseSalary() {
+            BASE_SALARY = parseFloat(document.getElementById('baseSalaryInput').value);
+            localStorage.setItem('baseSalary', BASE_SALARY);
+            calculateValues();
+            saveData();
+        }
+
+        function saveData() {
+            const rows = document.querySelectorAll('#attendanceTable tbody tr');
+            const data = [];
+
+            rows.forEach(row => {
+                data.push({
+                    date: row.querySelector('input[type="date"]').value,
+                    checkIn: row.querySelector('.checkIn').value,
+                    checkOut: row.querySelector('.checkOut').value
+                });
+            });
+
+            localStorage.setItem('salaryData', JSON.stringify(data));
+        }
+
+        function loadData() {
+            const savedData = localStorage.getItem('salaryData');
+            if (savedData) {
+                JSON.parse(savedData).forEach(entry => {
+                    addRow(entry.date, entry.checkIn, entry.checkOut);
+                });
+                calculateValues();
+            }
+        }
+    </script>
+</body>
+</html>
